@@ -1,0 +1,5 @@
+# Matters to track, one per line. Each is the last part of the matter's URL:
+# https://www.competitiontribunal.gov.au/current-matters/<slug>
+act-1-of-2026
+act-3-of-2026
+act-4-of-2026

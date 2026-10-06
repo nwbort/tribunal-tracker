@@ -1,0 +1,25 @@
+{
+  "matter": {
+    "number": "ACT 3 of 2026",
+    "title": "In the matter of Insurance Australia Group Limited",
+    "url": "https://www.competitiontribunal.gov.au/current-matters/act-3-of-2026"
+  },
+  "documents": [
+    {
+      "date": "2026-10-05",
+      "filed_by": "Australian Competition and Consumer Commission",
+      "description": "Notice of Address for Service",
+      "confidentiality": "Non-confidential",
+      "url": "https://www.competitiontribunal.gov.au/__data/assets/pdf_file/0011/608267/ACCC-Notice-of-address-for-service.pdf",
+      "url_gh": "/matters/act-3-of-2026/documents/608267-ACCC-Notice-of-address-for-service.pdf"
+    },
+    {
+      "date": "2026-10-01",
+      "filed_by": "Insurance Australia Group Limited",
+      "description": "Application for Review",
+      "confidentiality": "Non-confidential",
+      "url": "https://www.competitiontribunal.gov.au/__data/assets/pdf_file/0007/608155/01.-IAG-Application-for-review-by-Insurance-Australia-Group-Limited.pdf",
+      "url_gh": "/matters/act-3-of-2026/documents/608155-01.-IAG-Application-for-review-by-Insurance-Australia-Group-Limited.pdf"
+    }
+  ]
+}
