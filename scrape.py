@@ -62,6 +62,10 @@ CHALLENGE_MARKERS = (
 )
 
 MAX_WAIT_SECONDS = 90
+# How often to re-check a page while it loads or the challenge runs, and how
+# often to try clicking the Turnstile checkbox while a challenge is showing.
+POLL_SECONDS = 0.5
+TURNSTILE_CLICK_INTERVAL = 3
 
 # nodriver's default args, which help the browser look like a normal user
 # session rather than an automated one.
@@ -198,32 +202,57 @@ async def fetch_page(browser, url: str):
     print(f"Navigating to {url}", flush=True)
     tab = await browser.get(url)
 
+    target = url.split("?")[0].split("#")[0].rstrip("/")
     deadline = time.time() + MAX_WAIT_SECONDS
+    next_click = time.time() + TURNSTILE_CLICK_INTERVAL
     attempt = 0
+    last_title = None
     while time.time() < deadline:
         attempt += 1
-        await tab.sleep(3)
         try:
-            html = await tab.get_content()
+            # Only read the page once the tab has actually moved to url (it
+            # still shows the previous page until the navigation commits) and
+            # has fully loaded, so we never parse a half-received documents
+            # table.
+            state = await tab.evaluate(
+                "document.readyState + ' ' + location.origin + location.pathname"
+            )
+            ready, _, href = str(state).partition(" ")
+            on_page = href.rstrip("/") == target
+            html = (
+                await tab.get_content() if on_page and ready == "complete" else None
+            )
         except Exception as e:
-            print(f"  get_content failed: {e}", flush=True)
+            print(f"  page check failed: {e}", flush=True)
+            await tab.sleep(POLL_SECONDS)
             continue
 
-        title = ""
-        m = re.search(r"<title[^>]*>(.*?)</title>", html, re.I | re.S)
-        if m:
-            title = m.group(1).strip()
-        print(
-            f"  attempt {attempt}: {len(html)} bytes, title={title!r}",
-            flush=True,
-        )
+        if html is not None:
+            title = ""
+            m = re.search(r"<title[^>]*>(.*?)</title>", html, re.I | re.S)
+            if m:
+                title = m.group(1).strip()
+            challenge = looks_like_challenge(html)
+            if not challenge or title != last_title:
+                print(
+                    f"  attempt {attempt}: {len(html)} bytes, title={title!r}",
+                    flush=True,
+                )
+                last_title = title
+            if not challenge:
+                return tab, html
 
-        if not looks_like_challenge(html):
-            return tab, html
+        if html is not None and time.time() >= next_click:
+            await try_click_turnstile(tab)
+            next_click = time.time() + TURNSTILE_CLICK_INTERVAL
 
-        await try_click_turnstile(tab)
+        await tab.sleep(POLL_SECONDS)
 
-    print(f"WARNING: challenge did not clear within timeout for {url}", flush=True)
+    print(
+        f"WARNING: page did not load or challenge did not clear within timeout"
+        f" for {url}",
+        flush=True,
+    )
     return tab, None
 
 
