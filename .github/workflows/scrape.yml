@@ -1,0 +1,65 @@
+name: Scrape
+
+on:
+  push:
+  workflow_dispatch:
+  schedule:
+  # Every 30 minutes, at 7 and 37 minutes past the hour (off the busy :00)
+  - cron: '7,37 * * * *'
+
+permissions:
+  contents: write
+
+# Never let two runs race each other on the same state files.
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+env:
+  # Subscribe to this topic in the ntfy app (or at https://ntfy.sh/<topic>).
+  # Anyone who knows the topic name can read it; set a repository variable
+  # NTFY_TOPIC to override it with a private one.
+  NTFY_TOPIC: ${{ vars.NTFY_TOPIC || 'tribunal-tracker-a0df08566299' }}
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.repository.is_template }}
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python 3.13
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+        cache: "pip"
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+    - name: Install Chrome and Xvfb
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y xvfb
+        # google-chrome-stable is normally pre-installed on ubuntu-latest; make
+        # sure it (or chromium) is present for nodriver to drive.
+        if ! command -v google-chrome >/dev/null 2>&1; then
+          sudo apt-get install -y chromium-browser || sudo apt-get install -y chromium
+        fi
+        CHROME_PATH=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser || command -v chromium || true)
+        echo "Resolved CHROME_PATH=$CHROME_PATH"
+        "$CHROME_PATH" --version || true
+        echo "CHROME_PATH=$CHROME_PATH" >> "$GITHUB_ENV"
+    - name: Run the scraper
+      run: |
+        ./scrape.sh
+    # Still commit whatever did succeed if one page failed, so the change
+    # isn't notified again next run.
+    - name: Commit and push
+      if: ${{ !cancelled() }}
+      run: |-
+        git config user.name "Automated"
+        git config user.email "actions@users.noreply.github.com"
+        git add -A
+        timestamp=$(date -u)
+        git commit -m "${timestamp}" || exit 0
+        git pull --rebase
+        git push

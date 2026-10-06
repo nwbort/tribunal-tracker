@@ -1,0 +1,25 @@
+{
+  "matter": {
+    "number": "ACT 4 of 2026",
+    "title": "Application by RACWA Holdings Pty Ltd",
+    "url": "https://www.competitiontribunal.gov.au/current-matters/act-4-of-2026"
+  },
+  "documents": [
+    {
+      "date": "2026-10-06",
+      "filed_by": "Australian Competition and Consumer Commission",
+      "description": "Notice of Address for Service",
+      "confidentiality": "Non-confidential",
+      "url": "https://www.competitiontribunal.gov.au/__data/assets/pdf_file/0007/608317/ACCC-Notice-of-address-for-service-ACT4.pdf",
+      "url_gh": "/matters/act-4-of-2026/documents/608317-ACCC-Notice-of-address-for-service-ACT4.pdf"
+    },
+    {
+      "date": "2026-10-05",
+      "filed_by": "RACWA Holdings Pty Ltd",
+      "description": "Application to Tribunal for Review",
+      "confidentiality": "Non-confidential",
+      "url": "https://www.competitiontribunal.gov.au/__data/assets/pdf_file/0009/608292/RACWA-Application-for-Review.pdf",
+      "url_gh": "/matters/act-4-of-2026/documents/608292-RACWA-Application-for-Review.pdf"
+    }
+  ]
+}
