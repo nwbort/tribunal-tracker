@@ -26,6 +26,15 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ !github.event.repository.is_template }}
     steps:
+    # The runner's disk is slow the first time a file is read, which can make
+    # Chrome take ~10s to start. Read Chrome (and the libraries it loads) in
+    # the background now so that happens while checkout and pip install run.
+    - name: Warm up Chrome
+      run: |
+        nohup sh -c '
+          find /opt/google/chrome -type f -exec cat {} + >/dev/null 2>&1
+          timeout 30 google-chrome --headless --disable-gpu --dump-dom about:blank >/dev/null 2>&1
+        ' >/dev/null 2>&1 &
     - uses: actions/checkout@v7
     - name: Set up Python 3.13
       uses: actions/setup-python@v7
