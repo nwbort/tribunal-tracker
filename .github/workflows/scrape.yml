@@ -4,8 +4,8 @@ on:
   push:
   workflow_dispatch:
   schedule:
-  # Every 30 minutes, at 7 and 37 minutes past the hour (off the busy :00)
-  - cron: '7,37 * * * *'
+  # Every 15 minutes (7 minutes off the busy :00)
+  - cron: '7,22,37,52 * * * *'
 
 permissions:
   contents: write
