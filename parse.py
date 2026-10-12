@@ -30,22 +30,40 @@ parse_current_matters() returns them as:
       "url": "https://www.competitiontribunal.gov.au/current-matters/act-1-of-2026"
     }
 
+The tribunal's own decisions (directions, determinations) are the exception:
+they link to a ``/decisions/tribunal-decisions?sq_content_src=...`` page that
+wraps a Federal Court judgment, not to a file. For those rows ``url_gh`` is
+left out here (the filename is only known once scrape.py has followed the
+link to the Federal Court's Word document) and ``judgment_url`` names the
+judgment page; see judgment_page_url().
+
 Run standalone to parse a saved HTML file and print the JSON:
 
     parse.py documents page.html [DOCS_DIR]
     parse.py current-matters page.html
 """
 
+import base64
+import binascii
 import json
 import re
 import sys
 from datetime import datetime
 from html import unescape
 from html.parser import HTMLParser
-from urllib.parse import urljoin
+from urllib.parse import parse_qs, unquote, urljoin, urlparse
 
 BASE_URL = "https://www.competitiontribunal.gov.au"
 DEFAULT_DOCS_DIR = "documents"
+
+# The only domains anything is downloaded from: the tribunal's own, and the
+# Federal Court's for the tribunal's decisions (see judgment_page_url).
+TRIBUNAL_DOMAIN = "competitiontribunal.gov.au"
+JUDGMENT_DOMAIN = "fedcourt.gov.au"
+
+# What a judgment's file link says on its Federal Court page. The Word
+# document is the original; anything else offered is a rendering of it.
+_JUDGMENT_FILE_LINK_RE = re.compile(r"\b(?:word document|pdf|rtf)\b", re.IGNORECASE)
 
 
 def normalize_date(text: str) -> str:
@@ -63,17 +81,122 @@ def clean(text: str) -> str:
     return re.sub(r"\s+", " ", unescape(text)).strip()
 
 
-def document_filename(url: str) -> str:
-    """Local filename for a document URL.
+def _on_domain(url: str, domain: str, schemes=("https",)) -> bool:
+    parsed = urlparse(url)
+    host = parsed.hostname
+    return (
+        parsed.scheme in schemes
+        and host is not None
+        and (host == domain or host.endswith("." + domain))
+    )
+
+
+def is_tribunal_url(url: str) -> bool:
+    """True if url is on the tribunal's own site (only those are downloaded)."""
+    return _on_domain(url, TRIBUNAL_DOMAIN, schemes=("http", "https"))
+
+
+def is_judgment_host_url(url: str) -> bool:
+    """True if url is https on the Federal Court's domain or a subdomain."""
+    return _on_domain(url, JUDGMENT_DOMAIN)
+
+
+def safe_filename(name: str) -> str | None:
+    """name with anything but word characters, '.', '-', '(' and ')' replaced
+    by '-', or None if nothing usable is left."""
+    name = re.sub(r"[^\w.()-]+", "-", name).strip("-.")
+    return name or None
+
+
+def document_filename(url: str) -> str | None:
+    """Local filename for a document URL, or None for a URL that isn't a
+    file on the tribunal's site (nothing is downloaded for those).
 
     Asset URLs look like /__data/assets/pdf_file/0020/600284/Directions.pdf.
     The bare filename isn't unique within a matter (there are plenty of
     "Directions.pdf"s), so prefix it with the numeric asset id."""
-    parts = url.rstrip("/").split("/")
+    if not is_tribunal_url(url) or judgment_page_url(url):
+        return None
+    parts = unquote(urlparse(url).path).rstrip("/").split("/")
     filename = parts[-1]
     if len(parts) >= 2 and parts[-2].isdigit():
         filename = f"{parts[-2]}-{filename}"
-    return filename
+    return safe_filename(filename)
+
+
+def judgment_page_url(url: str) -> str | None:
+    """The Federal Court judgment page behind a tribunal-decisions link.
+
+    The tribunal's own decisions aren't uploaded like the parties' filings.
+    The matter page links to /decisions/tribunal-decisions?sq_content_src=...,
+    which re-renders a Federal Court judgment inside the tribunal's template.
+    sq_content_src is Squiz Matrix's remote-content parameter: a "+" followed
+    by base64 of "url=<judgment page URL, percent-encoded>&all=1".
+
+    Returns None for anything that isn't such a link to a Federal Court page,
+    so it doubles as the "is this a decision?" test."""
+    if not is_tribunal_url(url):
+        return None
+    values = parse_qs(urlparse(url).query).get("sq_content_src")
+    if not values:
+        return None
+    encoded = values[0].strip().lstrip("+")
+    try:
+        decoded = base64.b64decode(
+            encoded + "=" * (-len(encoded) % 4), validate=True
+        ).decode("utf-8")
+    except (ValueError, binascii.Error, UnicodeDecodeError):
+        return None
+    target = parse_qs(decoded).get("url")
+    if not target:
+        return None
+    target = target[0].strip()
+    return target if is_judgment_host_url(target) else None
+
+
+class _LinkParser(HTMLParser):
+    """Collect (href, text) for every link on a page."""
+
+    def __init__(self):
+        super().__init__()
+        self.links: list[tuple[str, str]] = []
+        self._href: str | None = None
+        self._text: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "a":
+            self._href = dict(attrs).get("href")
+            self._text = []
+
+    def handle_endtag(self, tag):
+        if tag == "a" and self._href is not None:
+            self.links.append((self._href, clean("".join(self._text))))
+            self._href = None
+
+    def handle_data(self, data):
+        if self._href is not None:
+            self._text.append(data)
+
+
+def judgment_file_link(html: str, page_url: str) -> str | None:
+    """The judgment's file link on its Federal Court page, preferring Word.
+
+    The file sits beneath the judgment's own path
+    (.../2026acompt0002/2026acompt0002), which is what tells it apart from
+    the site's other links."""
+    parser = _LinkParser()
+    parser.feed(html)
+    base_path = urlparse(page_url).path.rstrip("/") + "/"
+    candidates = []
+    for href, text in parser.links:
+        href = urljoin(page_url, href)
+        if not is_judgment_host_url(href):
+            continue
+        if not urlparse(href).path.startswith(base_path):
+            continue
+        if _JUDGMENT_FILE_LINK_RE.search(text):
+            candidates.append((0 if "word" in text.lower() else 1, href))
+    return min(candidates)[1] if candidates else None
 
 
 class _DocTableParser(HTMLParser):
@@ -153,16 +276,20 @@ def parse_documents(html: str, docs_dir: str = DEFAULT_DOCS_DIR) -> list[dict]:
         if not url:
             continue
         url = urljoin(BASE_URL + "/", url)
-        documents.append(
-            {
-                "date": normalize_date(row[0]["text"]),
-                "filed_by": row[1]["text"],
-                "description": row[2]["text"],
-                "confidentiality": row[3]["text"],
-                "url": url,
-                "url_gh": f"/{docs_dir}/{document_filename(url)}",
-            }
-        )
+        doc = {
+            "date": normalize_date(row[0]["text"]),
+            "filed_by": row[1]["text"],
+            "description": row[2]["text"],
+            "confidentiality": row[3]["text"],
+            "url": url,
+        }
+        judgment = judgment_page_url(url)
+        filename = document_filename(url)
+        if judgment:
+            doc["judgment_url"] = judgment
+        elif filename:
+            doc["url_gh"] = f"/{docs_dir}/{filename}"
+        documents.append(doc)
     return documents
 
 
