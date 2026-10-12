@@ -41,6 +41,14 @@ without sending notifications.
 - `matters/<slug>/documents/`: downloaded copies of the filings, named
   `<asset id>-<filename>` because filenames like `Directions.pdf` repeat.
 
+Only links to the tribunal's own site are downloaded. The tribunal's own
+decisions (directions, determinations) are the exception: they link to a
+`/decisions/tribunal-decisions?sq_content_src=…` page that wraps a Federal
+Court judgment, not to a file. For those the scraper follows the judgment to
+its "Original Word Document" on fedcourt.gov.au and saves the DOCX (e.g.
+`2026ACOMPT0002.docx`); the row also gets a `judgment_url` naming the
+judgment page. A decision already saved isn't followed again.
+
 ```json
 {
   "matter": {
