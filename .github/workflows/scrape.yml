@@ -66,6 +66,7 @@ jobs:
     # Still commit whatever did succeed if one page failed, so the change
     # isn't notified again next run.
     - name: Commit and push
+      id: commit
       if: ${{ !cancelled() }}
       run: |-
         git config user.name "Automated"
@@ -73,5 +74,25 @@ jobs:
         git add -A
         timestamp=$(date -u)
         git commit -m "${timestamp}" || exit 0
+        # Only a change to a tracked matter's filings matters to accc-mergers;
+        # a new entry on the Current matters list isn't in its overlay yet.
+        if git diff --name-only HEAD~1 HEAD -- 'matters/*/documents.json' | grep -q .; then
+          echo "documents_changed=true" >> "$GITHUB_OUTPUT"
+        fi
         git pull --rebase
         git push
+    # Kick off accc-mergers' own tribunal scrape, which fills in
+    # tribunal_appeals.json and rebuilds the site, rather than waiting for its
+    # hourly weekday schedule. Needs ACCC_MERGERS_TOKEN: a fine-grained PAT
+    # scoped to nwbort/accc-mergers with "Actions: Read and write". Without
+    # it this step is skipped.
+    - name: Trigger accc-mergers tribunal scrape
+      if: ${{ !cancelled() && steps.commit.outputs.documents_changed == 'true' }}
+      env:
+        GH_TOKEN: ${{ secrets.ACCC_MERGERS_TOKEN }}
+      run: |-
+        if [ -z "$GH_TOKEN" ]; then
+          echo "ACCC_MERGERS_TOKEN not set; not triggering accc-mergers"
+          exit 0
+        fi
+        gh workflow run scrape-tribunal.yml --repo nwbort/accc-mergers --ref main

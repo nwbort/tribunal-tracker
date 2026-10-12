@@ -16,6 +16,17 @@ app. Anyone who knows the topic name can read it. For a private one, set a
 repository variable called `NTFY_TOPIC` (Settings → Secrets and variables →
 Actions → Variables) and it will be used instead.
 
+## Triggering accc-mergers
+
+When a run commits a change to any `matters/<slug>/documents.json`, the
+workflow starts the
+[Scrape Tribunal](https://github.com/nwbort/accc-mergers/actions/workflows/scrape-tribunal.yml)
+workflow in `nwbort/accc-mergers`, so new filings reach mergers.fyi without
+waiting for its hourly weekday schedule. This needs a repository secret
+`ACCC_MERGERS_TOKEN`: a fine-grained personal access token with access to
+`nwbort/accc-mergers` only and the **Actions: Read and write** permission.
+Without it the step is skipped.
+
 ## Tracked matters
 
 Listed in [`matters.txt`](matters.txt), one URL slug per line (e.g.
